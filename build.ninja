@@ -1,0 +1,7 @@
+extensions=tex_math_dollars+mmd_title_block
+opts=-t html5 -f markdown_github+$extensions -H magic.head -s -c pandoc.css --mathjax
+
+rule pd
+  command = pandoc $in -o $out $opts
+
+build index.html: pd obsc.md | magic.head

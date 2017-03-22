@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="pandoc">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>“␣;”: A Simply Arited Concatenative Language</title>
+  <style type="text/css">code{white-space: pre;}</style>
+  <link rel="stylesheet" href="pandoc.css">
+  <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_CHTML-full" type="text/javascript"></script>
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+  <!-- <script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+      jax: ["input/TeX", "output/HTML-CSS"],
+      MathML: {
+        extensions: ["content-mathml.js"]
+      },
+      "HTML-CSS": { webFont: "Neo-Euler" }
+    });
+  </script> -->
+</head>
+<body>
+<header>
+<h1 class="title">“␣;”: A Simply Arited Concatenative Language</h1>
+</header>
+<div class="abstract">This article attempts to formalize “function composition instead of function application” definition of concatenative languages by introducing <code>␣;</code>, a simple concatenative language based on two operations: composition (<code>f g</code>) and parallel concatenation (<code>f ; g</code>). Assuming that all function have fixed arities, we define concrete semantics of the language and show how to make it Turing-complete.</div>
+<p>Among lesser-known programming languages, there're beautiful ones, that change the way you think about programming, and let you express things in a way you couldn't express before.</p>
+<p>Concatenative languages allow you to write code in a way, hard or impossible in other languages (except, maybe, FP/FL). A program written in these languages can be readable without having <em>any</em> variables. Concatenative languages represent data flow in a simple and intuitive way, without requiring “<code>.</code>”, “<code>(.) . (.)</code>”, and other cryptic operations. And they achieve that not by complexy, but by simplicity.</p>
+<p>Typical code in a concatenative language looks like this:</p>
+<pre class="factor"><code>USING: io kernel sequences
+http.client xml xml.data xml.traversal ;
+
+&quot;http://factorcode.org&quot; http-get nip string&gt;xml
+&quot;a&quot; deep-tags-named
+[ &quot;href&quot; attr ] map
+[ print ] each</code></pre>
+<p>This code is very similar to unix pipelines, but much more powerful. Fuctions can have any input and output arities, and combinators allow higher order programming.</p>
+<p>Concatenative languages are underresearched. Most of them rely on ad-hoc tricks with stack rather then any kind of theory. Can we do better? This article tries to make a step in this direction.</p>
+<h2 id="what-is-a-concatenative-programming-language">What is a concatenative programming language?</h2>
+<p>In a typical concatenative language, a program is a sequence of <em>words</em> that acts on <em>stack</em> by taking first n values from the top of the stack and replacing them by m values (n, m ≥ 0). For example, <code>1 3 5 * +</code> is evaluated like this:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Code</th>
+<th>Stack</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>1 3 5 * +</code></td>
+<td>(empty)</td>
+</tr>
+<tr class="even">
+<td><code>3 5 * +</code></td>
+<td><code>1</code></td>
+</tr>
+<tr class="odd">
+<td><code>5 * +</code></td>
+<td><code>1 3</code></td>
+</tr>
+<tr class="even">
+<td><code>* +</code></td>
+<td><code>1 3 5</code></td>
+</tr>
+<tr class="odd">
+<td><code>+</code></td>
+<td><code>1 15</code></td>
+</tr>
+<tr class="even">
+<td>(empty)</td>
+<td><code>16</code></td>
+</tr>
+</tbody>
+</table>
+<p>To provide higher order programming, quotations and combinators are used. A quotation is a sequence of words enclosed in square brackets, and combinators are words that take quotation from the stack to use it in some way. For example, <code>[ print ] each</code> takes a list from the stack and runs <code>print</code> on each element of the list.</p>
+<p>While this kind of evaluation is pretty imperative, there're several <em>functional</em> models of concatenative languages.</p>
+<p>In the first model, a program is a compostiton of functions that pass stack to each other. So, <code>1: S -&gt; S 1</code> is a function, <code>*: S a b -&gt; S (a * b)</code> and <code>+: S a b -&gt; S (a + b)</code> are also functions. And compositions <code>1 3 5: S -&gt; S 1 3 5</code> and <code>* +: S a b c -&gt; S (a + b*c)</code> are functions too.</p>
+<p><a href="http://www.kevinalbrecht.com/code/joy-mirror/joy.html">Joy</a> is a language using this model. This model is closely related to combinatory logic, see <a href="http://tunes.org/~iepos/joy.html">The Theory of Concatenative Combinators</a>.</p>
+<p>While this is a powerful model, it is probably <em>too</em> powerful. For example, static type checking in not a simple problem in this model, so all using this model languages are dynamically typed.</p>
+<p>The model used in <a href="http://www.enchiladacode.nl/">Enchilada</a> language is called term rewriting. There's no stack, a program is a sequence of terms, and evaluation is rewriting terms into other terms. For example, in this model <code>1 3 5 * +</code> is evaluated like this:</p>
+<pre><code>1 3 5 * +    → (* rule)
+1 15 +       → (+ rule)
+16</code></pre>
+<p>The implementation of Enchilada is quite complex, and the language seems to be also dynamically typed.</p>
+<p>In the third model there's also no stack, and a program is a generalized composition of functions. To see what it means, let's look at ordinary function composition first.</p>
+<p>For two functions <code>f</code> and <code>g</code>, there is a function <code>g . f</code> called <em>composition</em> of <code>f</code> and <code>g</code>, defined as <code>(g . f)(x) = g(f(x))</code>. Translated to ANF, expression <code>g(f(x))</code> looks like this:</p>
+<pre><code>let a = x in
+  let b = f(a) in
+    g(b)</code></pre>
+<p>But that's exactly what <code>x f g</code> is doing in a concatenative language! Except of using stack instead of variables.</p>
+<p><code>1 3 5 * +</code> can be represented as</p>
+<pre><code>let a = 1 in
+  let b = 3 in
+    let c = 5 in
+      let d = (*)(b, c) in
+        (+)(a, d)</code></pre>
+<p>ANF for <code>(+)(1, (*)(3, 5))</code> is basically the same up to constant definition order.</p>
+<p>There's a more visual way to think about it. Let we have an expression <code>2 2 * 3 3 * +</code>. Then:</p>
+<table class='flow'>
+<tr><td><code>2</code></td><td><code>2</code></td><td><code>3</code></td><td><code>3</code></td></tr>
+<tr><td class='open'>↓ <code>2</code></td><td class='open'>↓ <code>2</code></td><td class='open'>↓ <code>3</code></td><td class='open'>↓ <code>3</code></td></tr>
+<tr><td colspan='2'><code>*</code></td><td colspan='2'><code>*</code></td></tr>
+<tr><td class='open' colspan='2'>↓ <code>4</code></td><td class='open' colspan='2'>↓ <code>9</code></td></tr>
+<tr><td colspan='4'><code>+</code></td></tr>
+<tr><td class='open' colspan='4'>↓ <code>13</code></td></tr>
+</table>
+<p><a href="http://kittenlang.org/">Kitten</a> is a languages using this model, and so is <code>␣;</code> (the language this article is about). In fact, <code>␣;</code> aims to be the simpliest language with this semantics.</p>
+<p>Unlike stack model, generalized composition model requires knowing arities of functions <em>before</em> evaluation. This leads us to a very important restriction.</p>
+<h2 id="simply-arited-concatenative-languages">Simply arited concatenative languages</h2>
+<p>By analogy with simply typed languages, a concatenative language is called <em>simply arited</em> if every function has only one input and output arity.</p>
+<p>Note, that we differentiate <em>arity</em> and <em>typing</em>. They are two different concepts, and while static typing require at least some restrictions on arity, a simply arited language can be both statically or dynamically typed.</p>
+<p>This is a pretty hard restriction. For example, you can no longer use combinators described in [TCC][concomb], you need at least <code>n</code> different functions to reorder <code>n</code> elements on the stack, and in fact, simply arited concatenative languages are probably not even Turing-complete without additional data structures! But it makes code analysis much simplier.</p>
+<p>Let's write some arity equations for <code>f g</code>. The input arity of <code>f g</code> should be not less, than arity of <code>g</code>. But in <code>f g</code>, input arity of <code>g</code> can be bigger than output arity of <code>f</code>, so <code>f g</code> would need additional <span class="math inline">\(\operatorname{Ar_{in}}(\texttt g) - \operatorname{Ar_{out}}(\texttt f)\)</span> arguments. Applying the same reasoning to output arity of <code>f g</code>, we get:</p>
+<p><span class="math display">\[
+\operatorname{Ar_{in}}(\texttt{f g}) = \operatorname{Ar_{in}}(\texttt f) + \max (0, \operatorname{Ar_{in}}(\texttt g) - \operatorname{Ar_{out}}(\texttt f)) \\
+\operatorname{Ar_{out}}(\texttt{f g}) = \operatorname{Ar_{out}}(\texttt g) + \max (0, \operatorname{Ar_{out}}(\texttt f) - \operatorname{Ar_{in}}(\texttt g))
+\]</span></p>
+<p>A better algebraist could also write arity equaltions for <code>f g h</code>. But I'm not going to, with arity equaltions for <code>f g</code> we already can derive arity of complex expressions.</p>
+<p>So, we can check arities of expression, and there's a straightforward way to translate expressions into ANF. Time to introduce a concept that will make our language much more powerful.</p>
+<h2 id="parallel-concatenation">Parallel concatenation (<code>;</code>)</h2>
+<p>How do we write a fuction, that takes <code>a b c d</code> and computes <span class="math inline">\(ab + cd\)</span>? Usually, concanenative language solve this problem by juggling the stack with functions like <code>swap</code>, <code>over</code>, <code>dup</code>, <code>drop</code>, <code>nip</code> and others, or use special combinators like <code>bi</code>. But for general manipulation of <span class="math inline">\(n\)</span> inputs you need at least <span class="math inline">\(n\)</span> different functions. The same holds for combinators, in a simply arited concatenative language you can't have one <code>bi</code> combinator, for each <span class="math inline">\(n\)</span> and <span class="math inline">\(m\)</span> you'll need a sepatate <code>bi_n_m</code> combinator.</p>
+<p>So we need something else. It finds out, there's a simple and powerful way to deal with this problem.</p>
+<p>Let <code>f: a1 a2 ... an -&gt; x1 x2 ... xN</code>, <code>g: b1 b2 ... bm -&gt; y1 y2 ... yM</code> be some function. Parallel concatenation of functions <code>f</code> and <code>g</code> is a function <code>f ; g</code> with input arity <span class="math inline">\(n + m\)</span> and output arity <span class="math inline">\(N + M\)</span>, such as <code>a1 a2 ... an b1 b2 ... bn (f ; g)</code> returns <code>x1 x2 .. xN y1 y2 ... yN</code>.</p>
+<p>In stack terms, <code>f ; g</code> takes <span class="math inline">\(n + m\)</span> elements from the stack, then applies <code>f</code> to the first <span class="math inline">\(n\)</span> elements and <code>g</code> to the last <span class="math inline">\(m\)</span> elements in parallel. For example, <code>2 2 3 3 (*) ; (*) +</code> squares two and three and sums the results.</p>
+<p>Now consider substitution functions like <code>a b c -&gt; b a c</code>, or <code>x y -&gt; y</code>, or <code>y z -&gt; z z y</code>. It finds out, any of them can be built from only three basic functions.</p>
+<p><strong>Proposition:</strong> every substitution function can be constructed from <code>dup</code>, <code>drop</code> and <code>swap</code>.</p>
+<p>⏵ Indeed, let's define <code>id</code> as <code>dup drop</code>. For any n, we can define <code>a1 ... an -&gt; a1 a1 ... an</code> function as <code>dup ; id ; id ; ... ; id</code> and <code>a1 a2 ... an -&gt; a2 ... an</code> as <code>drop ; id ; id ; ... ; id</code>. Also, we can swap any two inputs with <code>swap ; id ; id ; ... ; id</code>.</p>
+<p>Since every substitution can be created by multiplying some inputs, removing some other inputs and permutating the result, any substitution function can be indeed constructed using only <code>dup</code>, <code>drop</code> and <code>swap</code>. ⏴</p>
+<p>So <code>;</code> operation makes our language much more powerful. It also allows us to introduce <em>infix notation</em>:</p>
+<ul>
+<li><code>f `h` g</code> → <code>f ; g h</code></li>
+<li><code>f `h`</code> → <code>f ; id_n h</code>, where <span class="math inline">\(n = \max (0, \operatorname{Ar_{in}}(\texttt h) - \operatorname{Ar_{out}}(\texttt f))\)</span></li>
+<li><code>`h` g</code> → <code>id_m ; g h</code>, where <span class="math inline">\(n = \max (0, \operatorname{Ar_{in}}(\texttt h) - \operatorname{Ar_{out}}(\texttt h))\)</span></li>
+</ul>
+<p>This is a syntax of unreasonable expressiveness. Sum of products? It's just <code>(*) + (*)</code>. Mean value? <code>sum / length</code>. In <a href="https://evincarofautumn.blogspot.com/2012/02/why-concatenative-programming-matters.html">Why Concatenative Programming Matters</a>, there's a good example of expression that is hard to write in an ordinary concatenative programming language:</p>
+<p><span class="math display">\[f(x, y, z) = y^2 + x^2 - |y|\]</span></p>
+<p>The solution showed there is utterly horrible: <code>drop dup dup × swap abs rot3 dup × swap − +</code>. Another solution is <code>drop [square] [abs] bi − [square] dip +</code> – much better, but still ugly.</p>
+<p>In our notation, it's just <code>drop dup (^2) + (^2) - abs</code>. Simple, readable, beautiful.</p>
+<p>What about something more complex, like <a href="https://en.wikipedia.org/wiki/Rotation_matrix">coordinate rotations</a>? No problem:</p>
+<pre><code>def rotate: _ _ _ -&gt; _ _
+    3dup x&#39; ; y&#39; where
+        x&#39; = swap over (* cos) - (* sin)
+        y&#39; = swap over (* sin) - (* cos)</code></pre>
+<p>The programming is finally liberated from von-Neumann style, but almost no readability is lost.</p>
+<h2 id="towards-turing-completeness">Towards Turing-completeness</h2>
+<h3 id="lists">Lists</h3>
+<p>TODO: <code>list</code>, <code>::</code>, <code>behead: list -&gt; x xs</code></p>
+<h3 id="combinators">Combinators</h3>
+<h3 id="recursion">Recursion</h3>
+<p>TODO: recursion combinator <code>rec: _ ( _ bool -&gt; _ ) -&gt; _</code></p>
+<h3 id="a-small-base">A small base</h3>
+<h2 id="references">References</h2>
+</body>
+</html>
