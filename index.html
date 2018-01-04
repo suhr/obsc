@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="generator" content="pandoc">
@@ -25,6 +25,7 @@
 <header>
 <h1 class="title">“␣;”: A Simply Arited Concatenative Language</h1>
 </header>
+<p><strong>This article is abandoned and out of date. Read <a href="https://suhr.github.io/papers/calg.html">Comma is a Product: the Algebra of Concatenative Programming</a> instead.</strong></p>
 <div class="abstract">This article attempts to formalize “function composition instead of function application” definition of concatenative languages by introducing <code>␣;</code>, a simple concatenative language based on two operations: composition (<code>f g</code>) and parallel concatenation (<code>f ; g</code>). Assuming that all function have fixed arities, we define concrete semantics of the language and show how to make it Turing-complete.</div>
 <p>Among lesser-known programming languages, there're beautiful ones, that change the way you think about programming, and let you express things in a way you couldn't express before.</p>
 <p>Concatenative languages allow you to write code in a way, hard or impossible in other languages (except, maybe, FP/FL). A program written in these languages can be readable without having <em>any</em> variables. Concatenative languages represent data flow in a simple and intuitive way, without requiring “<code>.</code>”, “<code>(.) . (.)</code>”, and other cryptic operations. And they achieve that not by complexy, but by simplicity.</p>

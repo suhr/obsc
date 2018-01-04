@@ -1,5 +1,7 @@
 Title: “␣;”: A Simply Arited Concatenative Language
 
+**This article is abandoned and out of date. Read [Comma is a Product: the Algebra of Concatenative Programming](https://suhr.github.io/papers/calg.html) instead.**
+
 <div class="abstract">This article attempts to formalize “function composition instead of function application” definition of concatenative languages by introducing <code>␣;</code>, a simple concatenative language based on two operations: composition (<code>f g</code>) and parallel concatenation (<code>f ; g</code>). Assuming that all function have fixed arities, we define concrete semantics of the language and show how to make it Turing-complete.</div>
 
 Among lesser-known programming languages, there're beautiful ones, that change the way you think about programming, and let you express things in a way you couldn't express before.
